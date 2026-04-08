@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Chat Room Pro - Giang Final</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { margin: 0; padding: 0; height: 100dvh; overflow: hidden; background: #f0f2f5; font-family: sans-serif; }
+        .app { width: 100%; max-width: 500px; height: 100dvh; display: flex; flex-direction: column; background: #fff; margin: 0 auto; position: relative; }
+        
+        header { background: #0084ff; color: #fff; padding: 12px; text-align: center; font-weight: bold; height: 50px; flex-shrink: 0; display: flex; justify-content: center; align-items: center; z-index: 100; position: relative; }
+        #btn-logout { position: absolute; left: 10px; background: rgba(255,255,255,0.2); border: none; color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; }
+        #admin-status { position: absolute; right: 15px; font-size: 14px; font-weight: bold; color: #FFD700; }
+        
+        /* Nút thông báo hệ thống dành cho Admin */
+        #btn-announcement { 
+            position: absolute; 
+            right: 50px; 
+            background: #ff4757; 
+            border: none; 
+            color: #fff; 
+            padding: 5px 8px; 
+            border-radius: 50%; 
+            font-size: 14px; 
+            cursor: pointer; 
+            display: none; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        #chat-box { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 12px; background: #fff; }
+        .msg { padding: 8px 12px; border-radius: 15px; max-width: 85%; font-size: 14px; line-height: 1.4; word-wrap: break-word; position: relative; }
+        .me { align-self: flex-end; background: #0084ff; color: #fff; border-bottom-right-radius: 2px; }
+        .user { align-self: flex-start; background: #e4e6eb; color: #000; border-bottom-left-radius: 2px; }
+        
+        .adm-tag { color: #ff4757; font-weight: bold; margin-right: 4px; font-size: 10px; border: 1.5px solid #ff4757; padding: 1px 4px; border-radius: 4px; text-transform: uppercase; }
+        .msg-info { display: flex; justify-content: space-between; align-items: center; font-size: 9px; margin-top: 4px; opacity: 0.7; }
+        
+        .tools { display: flex; gap: 10px; align-items: center; }
+        .tool-btn { font-size: 12px; cursor: pointer; padding: 2px; }
+        .edit-icon { color: #f1c40f; }
+        .del-icon { color: #ff4757; font-weight: bold; font-size: 14px; }
+        .admin-action { color: #0084ff; font-size: 14px; margin-left: 5px; cursor: pointer; }
+
+        .input-area { padding: 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 1px solid #ddd; display: flex; gap: 5px; background: #fff; align-items: center; flex-shrink: 0; z-index: 90; }
+        #msg { flex: 1; border-radius: 20px; padding: 10px 15px; border: 1px solid #ddd; outline: none; font-size: 16px; }
+        .btn-send { border-radius: 20px; border: none; background: #0084ff; color: #fff; padding: 10px 20px; font-weight: bold; cursor: pointer; }
+        
+        #ban-info { width: 100%; background: #ff4757; color: white; text-align: center; font-size: 12px; font-weight: bold; padding: 8px 0; display: none; }
+        
+        .announcement {
+            align-self: center;
+            background: #fff3cd;
+            color: #856404;
+            width: 92%;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            padding: 10px;
+            font-size: 13px;
+            margin: 10px 0;
+            border: 1px solid #ffeeba;
+            border-left: 5px solid #ff4757;
+            position: relative;
+        }
+
+        #action-modal, #login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+        #login-overlay { background: #f0f2f5; }
+        .modal-box { background: #fff; padding: 25px; border-radius: 15px; width: 310px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .hidden { display: none !important; }
+        .admin-btn { width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; }
+        input[type="text"], input[type="password"], input[type="number"] { width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #ddd; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div id="login-overlay">
+            <div class="modal-box">
+                <h2 id="auth-title" style="color:#0084ff; margin:0 0 15px 0;">Đăng Nhập</h2>
+                <input type="text" id="auth-user" placeholder="Tên tài khoản...">
+                <input type="password" id="auth-pass" placeholder="Mật khẩu...">
+                <button onclick="handleAuth()" class="admin-btn" style="background:#0084ff;">VÀO PHÒNG CHAT</button>
+                <button onclick="loginAnonymous()" class="admin-btn" style="background:#6c757d;">ẨN DANH</button>
+                <p onclick="switchAuthMode()" id="auth-switch" style="font-size:12px; color:#0084ff; cursor:pointer; margin-top:10px; text-decoration:underline;">Đăng ký tài khoản</p>
+            </div>
+        </div>
+
+        <div id="action-modal" class="hidden">
+            <div class="modal-box">
+                <h4 id="target-name">Quản lý người dùng</h4>
+                <button onclick="setAdminRole()" class="admin-btn" style="background:#2ecc71;">TẶNG QUYỀN ADMIN</button>
+                <hr>
+                <p style="font-size:11px; font-weight:bold; color:red;">KHOÁ CHAT (Phút)</p>
+                <input type="number" id="ban-custom" placeholder="Số phút...">
+                <button onclick="banUser(document.getElementById('ban-custom').value)" class="admin-btn" style="background:#ff4757;">XÁC NHẬN KHOÁ</button>
+                <button onclick="document.getElementById('action-modal').classList.add('hidden')" class="admin-btn" style="background:#999; margin-top:10px;">ĐÓNG</button>
+            </div>
+        </div>
+
+        <header> 
+            <button id="btn-logout" onclick="logout()">Thoát</button>
+            PHÒNG CHAT
+            <button id="btn-announcement" onclick="adminSendAnnouncement()">📢</button>
+            <span id="admin-status"></span> 
+        </header>
+        
+        <div id="chat-box"></div>
+        <div id="ban-info"></div>
+
+        <div class="input-area">
+            <input type="text" id="msg" placeholder="Nhập tin nhắn..." onkeypress="if(event.key==='Enter') send()">
+            <button onclick="send()" class="btn-send">Gửi</button>
+        </div>
+    </div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyBePJ8qaOtHcBSKak-gdVH2qnjZDekkgqI",
+        authDomain: "chat-voi-nguoi-la12.firebaseapp.com",
+        databaseURL: "https://chat-voi-nguoi-la12-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "chat-voi-nguoi-la12",
+        storageBucket: "chat-voi-nguoi-la12.firebasestorage.app",
+        messagingSenderId: "514146383665",
+        appId: "1:514146383665:web:e9e0298c3ba1f3f8972210"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    
+    let name = ""; let isAdmin = false; let isRegisterMode = false; let isBanned = false; let selectedUser = "";
+
+    window.onload = function() {
+        const saved = localStorage.getItem("chat_user_name");
+        if (saved) {
+            name = saved;
+            db.ref("admin_config").once("value", (snap) => {
+                const admins = snap.val();
+                let rawName = name.replace("ADMIN_", "");
+                if (admins && admins[rawName]) {
+                    isAdmin = true; 
+                    name = "ADMIN_" + rawName;
+                    document.getElementById('admin-status').innerText = "🛡️";
+                    document.getElementById('btn-announcement').style.display = "block";
+                }
+                document.getElementById('login-overlay').classList.add('hidden');
+                listen(); checkBanStatus();
+            });
+        }
+    };
+
+    function handleAuth() {
+        const u = document.getElementById('auth-user').value.trim();
+        const p = document.getElementById('auth-pass').value.trim();
+        if(!u || !p) return alert("Nhập đủ thông tin!");
+        if(isRegisterMode) {
+            db.ref("users").child(u).set({ pass: p, user: u }).then(() => { name = u; loginSuccess(); });
+        } else {
+            db.ref("admin_config").child(u).once("value", (snap) => {
+                const adData = snap.val();
+                if(adData && adData.pass === p) { name = "ADMIN_" + u; loginSuccess(); }
+                else {
+                    db.ref("users").child(u).once("value", (s) => {
+                        const data = s.val();
+                        if(data && data.pass === p) { name = u; loginSuccess(); }
+                        else alert("Sai thông tin!");
+                    });
+                }
+            });
+        }
+    }
+
+    function sendAlert(text) {
+        db.ref("messages").push().set({ s: "HỆ THỐNG", c: text, t: Date.now(), type: 'alert' });
+    }
+
+    function adminSendAnnouncement() {
+        if(!isAdmin && !name.startsWith("ADMIN_")) return;
+        const msg = prompt("Nhập nội dung thông báo hệ thống:");
+        if(msg && msg.trim() !== "") {
+            sendAlert(msg.trim());
+        }
+    }
+
+    function loginSuccess() { 
+        localStorage.setItem("chat_user_name", name); 
+        sendAlert(`Chào mừng [${name.replace("ADMIN_","")}] đã tham gia phòng chat!`);
+        setTimeout(() => { location.reload(); }, 500);
+    }
+
+    function loginAnonymous() { 
+        name = "Khách_" + Math.floor(1000 + Math.random() * 9000); 
+        loginSuccess(); 
+    }
+
+    function editMsg(id, oldContent) {
+        let currentIsAdm = isAdmin || name.startsWith("ADMIN_");
+        if(isBanned && !currentIsAdm) return;
+        const newMsg = prompt("Sửa tin nhắn:", oldContent);
+        if(newMsg && newMsg.trim() !== oldContent) {
+            db.ref("messages").child(id).update({ c: newMsg.trim(), edited: true });
+        }
+    }
+
+    function del(e, id) { 
+        e.stopPropagation(); 
+        if(confirm("Xóa tin nhắn này?")) db.ref("messages").child(id).remove(); 
+    }
+
+    function openActionMenu(e, userName) {
+        e.stopPropagation(); 
+        if(!isAdmin && !name.startsWith("ADMIN_")) return;
+        selectedUser = userName;
+        document.getElementById('target-name').innerText = "Quản lý: " + userName;
+        document.getElementById('action-modal').classList.remove('hidden');
+    }
+
+    function banUser(minutes) {
+        if(!minutes || minutes <= 0) return alert("Nhập số phút!");
+        const until = Date.now() + (parseInt(minutes) * 60 * 1000);
+        db.ref("banned_users").child(selectedUser).set(until).then(() => {
+            sendAlert(`[${selectedUser}] bị khóa chat ${minutes} phút.`);
+            document.getElementById('action-modal').classList.add('hidden');
+        });
+    }
+
+    function setAdminRole() {
+        db.ref("users").child(selectedUser).once("value", (s) => {
+            const pass = s.val() ? s.val().pass : "123456";
+            db.ref("admin_config").child(selectedUser).set({ user: selectedUser, pass: pass }).then(() => {
+                sendAlert(`[${selectedUser}] đã được nâng lên làm ADMIN!`);
+                document.getElementById('action-modal').classList.add('hidden');
+            });
+        });
+    }
+
+    function switchAuthMode() { 
+        isRegisterMode = !isRegisterMode; 
+        document.getElementById('auth-title').innerText = isRegisterMode ? "Đăng Ký" : "Đăng Nhập"; 
+        document.getElementById('auth-switch').innerText = isRegisterMode ? "Đã có tài khoản? Đăng nhập" : "Đăng ký tài khoản";
+    }
+
+    function logout() { localStorage.removeItem("chat_user_name"); location.reload(); }
+    
+    function send() {
+        const m = document.getElementById('msg');
+        if(!m.value.trim() || isBanned) return;
+        db.ref("messages").push().set({ s: name, c: m.value, t: Date.now(), type: 'text' });
+        m.value = "";
+    }
+
+    function checkBanStatus() {
+        if(isAdmin || name.startsWith("ADMIN_")) return;
+        db.ref("banned_users").child(name).on("value", (snap) => {
+            const until = snap.val();
+            if(until && until > Date.now()) {
+                isBanned = true; 
+                document.getElementById('ban-info').style.display = "block";
+                document.getElementById('ban-info').innerText = "BẠN ĐANG BỊ KHOÁ CHAT!";
+                document.getElementById('msg').disabled = true;
+                document.getElementById('btn-logout').style.display = "none";
+            } else {
+                isBanned = false; document.getElementById('ban-info').style.display = "none";
+                document.getElementById('msg').disabled = false;
+                document.getElementById('btn-logout').style.display = "block";
+            }
+        });
+    }
+
+    function listen() {
+        db.ref("messages").limitToLast(50).on("value", (s) => {
+            const box = document.getElementById('chat-box'); box.innerHTML = "";
+            s.forEach((c) => {
+                const d = c.val(); const div = document.createElement('div');
+                if(d.type === 'alert') {
+                    div.className = "announcement";
+                    let currentIsAdm = isAdmin || name.startsWith("ADMIN_");
+                    let delAlert = currentIsAdm ? `<span class="tool-btn del-icon" onclick="del(event, '${c.key}')" style="position:absolute; right:10px; top:8px;">x</span>` : "";
+                    div.innerHTML = `⚠️ ${d.c} ${delAlert}`;
+                } else {
+                    div.className = `msg ${d.s === name ? 'me' : 'user'}`;
+                    let isTargetAdm = d.s.startsWith("ADMIN_");
+                    let currentIsAdm = isAdmin || name.startsWith("ADMIN_");
+                    let disp = isTargetAdm ? `<span class="adm-tag">ADMIN</span>${d.s.replace("ADMIN_","")}` : d.s;
+                    
+                    let actionBtn = (currentIsAdm && d.s !== name && !isTargetAdm) ? `<span class="admin-action" onclick="openActionMenu(event, '${d.s}')">⚙️</span>` : "";
+                    let canEdit = (currentIsAdm || (d.s === name && !isBanned));
+                    let editBtn = canEdit ? `<span class="tool-btn edit-icon" onclick="editMsg('${c.key}', '${d.c.replace(/'/g, "\\'")}')">🔧</span>` : "";
+                    let canDelete = (currentIsAdm || d.s === name);
+                    let delBtn = canDelete ? `<span class="tool-btn del-icon" onclick="del(event, '${c.key}')">x</span>` : "";
+                    
+                    div.innerHTML = `
+                        <div style="font-size:10px; font-weight:bold; margin-bottom:3px; display:flex; justify-content:space-between; align-items:center;">
+                            <span>${disp} ${actionBtn}</span>
+                            <span class="tools">${editBtn} ${delBtn}</span>
+                        </div>
+                        <div style="word-break: break-word;">${d.c}</div>
+                        <div class="msg-info">
+                            <span>${d.edited ? "(đã sửa)" : ""}</span>
+                            <span>${new Date(d.t).getHours()}:${new Date(d.t).getMinutes().toString().padStart(2,'0')}</span>
+                        </div>
+                    `;
+                }
+                box.appendChild(div);
+            });
+            box.scrollTop = box.scrollHeight;
+        });
+    }
+</script>
+</body>
+</html>
